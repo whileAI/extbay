@@ -1,10 +1,17 @@
-import type { Permission } from '@extbay/core';
+import { requirePermission, type Permission } from '@extbay/core';
 import { ExtensionManager } from './manager.js';
+import { storageGet, storageSet } from './rpc.js';
 
 interface BridgeRequest {
   method?: string;
   path?: string;
-  body?: { approvedPermissions?: Permission[]; automaticUpdateChecks?: boolean };
+  body?: {
+    approvedPermissions?: Permission[];
+    automaticUpdateChecks?: boolean;
+    extensionId?: string;
+    method?: string;
+    params?: Record<string, unknown>;
+  };
   userId?: number;
 }
 
@@ -31,6 +38,9 @@ async function dispatch(request: BridgeRequest): Promise<unknown> {
     if (typeof enabled !== 'boolean') throw statusError(400, 'automaticUpdateChecks must be a boolean');
     return manager.setAutomaticUpdateChecks(enabled);
   }
+  if (method === 'POST' && path === '/extbay/api/rpc') {
+    return storageRPC(request.body, validUserId(request.userId));
+  }
 
   const toggle = /^\/extbay\/api\/extensions\/([^/]+)\/(enable|disable)$/.exec(path);
   if (method === 'POST' && toggle) return manager.setEnabled(decodeURIComponent(toggle[1]!), toggle[2] === 'enable');
@@ -44,6 +54,22 @@ async function dispatch(request: BridgeRequest): Promise<unknown> {
     return manager.updateExtension(id, permissions);
   }
   throw statusError(404, 'unsupported bridge operation');
+}
+
+async function storageRPC(body: BridgeRequest['body'], userId: number): Promise<unknown> {
+  const id = body?.extensionId;
+  const method = body?.method;
+  const params = body?.params ?? {};
+  if (typeof id !== 'string' || !/^[a-z0-9][a-z0-9.-]{1,127}$/.test(id)) throw statusError(400, 'invalid extension id');
+  if (method !== 'storage.get' && method !== 'storage.set') throw statusError(400, 'bridge RPC only supports extension storage');
+  const state = await manager.store.read();
+  const extension = state.extensions[id];
+  if (!extension?.enabled) throw statusError(403, 'extension is not enabled');
+  requirePermission(extension.grantedPermissions, method);
+  const key = params.key;
+  if (typeof key !== 'string' || key.length < 1 || key.length > 128) throw statusError(400, 'invalid key');
+  if (method === 'storage.get') return storageGet(id, userId, key);
+  return storageSet(id, userId, key, params.value);
 }
 
 function validUserId(value: number | undefined): number {

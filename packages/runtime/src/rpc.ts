@@ -62,12 +62,12 @@ function objectId(params: Record<string, unknown>, name: string): string {
   return encodeURIComponent(value);
 }
 
-async function storageGet(extension: string, userId: number, key: string) {
+export async function storageGet(extension: string, userId: number, key: string) {
   const values = await readStorage(extension, userId);
   return values[key] ?? null;
 }
 
-async function storageSet(extension: string, userId: number, key: string, value: unknown) {
+export async function storageSet(extension: string, userId: number, key: string, value: unknown) {
   const encoded = JSON.stringify(value);
   if (encoded === undefined || Buffer.byteLength(encoded) > 64 * 1024) throw badRequest('storage value exceeds 64 KiB or is not JSON');
   const values = await readStorage(extension, userId);

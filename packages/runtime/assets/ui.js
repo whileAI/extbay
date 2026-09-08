@@ -7,6 +7,7 @@
   const endpoint = (path) => `${runtime}${path}`;
   let bridgeMode = false;
   let bridgeContext;
+  let runtimeRpcUnavailable = false;
   let state;
   let updates = [];
   let currentTab = new URLSearchParams(location.search).get('tab') || 'installed';
@@ -120,7 +121,7 @@
     const listener = async (event) => {
       if (event.source !== frame.contentWindow || event.data?.type !== 'extbay.rpc' || event.data?.nonce !== nonce) return;
       const { requestId, method, params } = event.data;
-      try { const response = await fetch(endpoint('/extbay/api/rpc'), { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ extensionId: id, method, params }) }); const body = await response.json(); frame.contentWindow.postMessage({ type: 'extbay.rpc.result', nonce, requestId, ok: response.ok, value: response.ok ? body : undefined, error: response.ok ? undefined : body.error }, '*'); }
+      try { const result = await rpcRequest(id, method, params); frame.contentWindow.postMessage({ type: 'extbay.rpc.result', nonce, requestId, ...result }, '*'); }
       catch (error) { frame.contentWindow.postMessage({ type: 'extbay.rpc.result', nonce, requestId, ok: false, error: error.message }, '*'); }
     };
     const back = document.createElement('button'); back.className = 'back'; back.textContent = 'Back to Extensions';
@@ -165,6 +166,61 @@
       }
     }
     return bridgeRequest(path, options);
+  }
+  async function rpcRequest(extensionId, method, params) {
+    if (!runtimeRpcUnavailable) {
+      try {
+        const response = await fetch(endpoint('/extbay/api/rpc'), { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ extensionId, method, params }) });
+        const body = await response.json();
+        return { ok: response.ok, value: response.ok ? body : undefined, error: response.ok ? undefined : body.error };
+      } catch {
+        runtimeRpcUnavailable = true;
+      }
+    }
+    return browserRPC(extensionId, method, params ?? {});
+  }
+  async function browserRPC(extensionId, method, params) {
+    const extension = state.extensions[extensionId];
+    if (!extension?.enabled) return { ok: false, error: 'extension is not enabled' };
+    const permissions = {
+      'containers.list': 'containers.read', 'containers.inspect': 'containers.read', 'containers.restart': 'containers.control',
+      'stacks.list': 'stacks.read', 'volumes.list': 'volumes.read', 'metrics.host': 'host.metrics',
+      'storage.get': 'extension.storage', 'storage.set': 'extension.storage',
+    };
+    const required = permissions[method];
+    if (!required) return { ok: false, error: `RPC method is not available through the same-origin bridge: ${method}` };
+    if (!extension.grantedPermissions.includes(required)) return { ok: false, error: `permission denied: ${required}` };
+    try {
+      if (method === 'storage.get' || method === 'storage.set') {
+        const response = await bridgeRequest('/extbay/api/rpc', { method: 'POST', body: JSON.stringify({ extensionId, method, params }) });
+        const body = await response.json();
+        return { ok: response.ok, value: response.ok ? body : undefined, error: response.ok ? undefined : body.error };
+      }
+      const endpointId = positiveId(params.endpointId, 'endpointId');
+      let requestMethod = 'GET'; let path;
+      if (method === 'containers.list') path = `/api/endpoints/${endpointId}/docker/containers/json?all=1`;
+      if (method === 'containers.inspect') path = `/api/endpoints/${endpointId}/docker/containers/${encodeURIComponent(objectId(params.id, 'id'))}/json`;
+      if (method === 'containers.restart') { requestMethod = 'POST'; path = `/api/endpoints/${endpointId}/docker/containers/${encodeURIComponent(objectId(params.id, 'id'))}/restart`; }
+      if (method === 'stacks.list') path = `/api/stacks?filters=${encodeURIComponent(JSON.stringify({ EndpointID: endpointId }))}`;
+      if (method === 'volumes.list') path = `/api/endpoints/${endpointId}/docker/volumes`;
+      if (method === 'metrics.host') path = `/api/endpoints/${endpointId}/docker/info`;
+      if (!path) return { ok: false, error: `unsupported RPC method: ${method}` };
+      const response = await fetch(path, { method: requestMethod, credentials: 'same-origin' });
+      if (!response.ok) return { ok: false, error: `Portainer API rejected request (${response.status})` };
+      if (response.status === 204) return { ok: true, value: null };
+      const contentType = response.headers.get('content-type') || '';
+      return { ok: true, value: contentType.includes('json') ? await response.json() : await response.text() };
+    } catch (error) {
+      return { ok: false, error: error.message };
+    }
+  }
+  function positiveId(value, name) {
+    if (!Number.isSafeInteger(value) || value < 1) throw new Error(`invalid ${name}`);
+    return value;
+  }
+  function objectId(value, name) {
+    if (typeof value !== 'string' || !/^[A-Za-z0-9_.:@+-]{1,128}$/.test(value)) throw new Error(`invalid ${name}`);
+    return value;
   }
   async function bridgeRequest(path, options) {
     const context = await getBridgeContext();
