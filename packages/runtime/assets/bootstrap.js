@@ -8,10 +8,36 @@
   }).catch(() => undefined);
 
   function mount() {
+    const runtimeOrigin = window.__EXTBAY_RUNTIME_ORIGIN__ || location.origin;
+    const uiPath = window.__EXTBAY_RUNTIME_ORIGIN__ ? '/extbay-ui.html' : '/extbay/ui';
     let panel;
-    let frame;
     let hiddenView;
     let oldTitle = document.title;
+    let ui;
+    let loading;
+
+    const loadUI = async (tab) => {
+      if (ui) { ui.selectTab(tab); return; }
+      if (!loading) loading = (async () => {
+        const response = await fetch(uiPath, { credentials: 'same-origin' });
+        if (!response.ok) throw new Error(`ExtBay UI failed to load (${response.status})`);
+        const parsed = new DOMParser().parseFromString(await response.text(), 'text/html');
+        parsed.querySelectorAll('script').forEach((script) => script.remove());
+        const shadow = panel.attachShadow({ mode: 'closed' });
+        shadow.innerHTML = `${parsed.head.querySelector('style')?.outerHTML || ''}${parsed.body.innerHTML}`;
+        await new Promise((resolve, reject) => {
+          if (window.ExtBayUI) return resolve();
+          const script = document.createElement('script');
+          script.src = window.__EXTBAY_RUNTIME_ORIGIN__ ? '/extbay-ui.js' : '/extbay/ui.js';
+          script.onload = resolve; script.onerror = () => reject(new Error('ExtBay UI script failed to load'));
+          document.head.append(script);
+        });
+        ui = window.ExtBayUI.mount(shadow, runtimeOrigin);
+        shadow.addEventListener('extbay.close', close);
+      })();
+      await loading;
+      ui.selectTab(tab);
+    };
 
     const open = (tab = 'installed') => {
       const wasOpen = panel && !panel.hidden;
@@ -21,15 +47,10 @@
         panel = document.createElement('section');
         panel.id = 'extbay-panel';
         panel.setAttribute('aria-label', 'Extensions');
-        Object.assign(panel.style, { width: '100%', height: '100%', minHeight: 'calc(100vh - 55px)', overflow: 'hidden' });
-        frame = document.createElement('iframe');
-        frame.title = 'ExtBay Extensions';
-        frame.setAttribute('sandbox', 'allow-scripts allow-same-origin');
-        Object.assign(frame.style, { width: '100%', height: '100%', minHeight: 'calc(100vh - 55px)', border: '0', display: 'block', background: '#0f172a' });
-        panel.append(frame);
+        Object.assign(panel.style, { width: '100%', height: '100%', minHeight: 'calc(100vh - 55px)', overflow: 'hidden', background: '#0f172a', color: '#e2e8f0', fontFamily: 'Inter,system-ui,sans-serif' });
       }
       if (panel.parentElement !== host) host.append(panel);
-      frame.src = `/extbay/ui?tab=${encodeURIComponent(tab)}`;
+      void loadUI(tab).catch((error) => { panel.textContent = error.message; });
       if (hiddenView) hiddenView.style.display = 'none';
       panel.hidden = false;
       if (!wasOpen) oldTitle = document.title;
@@ -44,9 +65,6 @@
       document.querySelectorAll('#extbay-sidebar button').forEach((button) => button.setAttribute('aria-current', 'false'));
     };
 
-    window.addEventListener('message', (event) => {
-      if (frame && event.origin === location.origin && event.source === frame.contentWindow && event.data?.type === 'extbay.close') close();
-    });
     document.addEventListener('click', (event) => {
       const link = event.target.closest?.('a[href]');
       if (link && !link.closest('#extbay-sidebar')) close();

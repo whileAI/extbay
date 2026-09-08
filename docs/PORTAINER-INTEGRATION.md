@@ -10,9 +10,10 @@ Research baseline: upstream tag `2.45.0`, commit `d79ba72` (checked
 - `api/http/security/bouncer.go` sets CSP with `script-src 'self'` and a
   `frame-src` list that does not contain `'self'`.
 
-Consequences: ExtBay uses no private/deprecated extension data model. The trusted
-gateway injects a same-origin bootstrap and minimally extends `frame-src` with
-`'self'` so its trusted management iframe can render. Untrusted extension frames
-remain governed by ExtBay's stricter CSP and sandbox. Sidebar DOM placement is a
-version-sensitive adapter with a fixed-position launcher fallback; it is not
-presented as a Portainer API.
+Consequences: ExtBay uses no private/deprecated extension data model. The
+installer backs up `/public/index.html`, copies versioned ExtBay assets into the
+running panel, and adds a same-origin bootstrap tag. The trusted manager renders
+in an isolated Shadow DOM inside the panel content area. Extension frontend
+assets are copied into versioned `/public/extbay-extensions/` paths and execute
+only in `sandbox="allow-scripts"` iframes. Sidebar DOM placement remains a
+version-sensitive adapter; it is not presented as a Portainer API.

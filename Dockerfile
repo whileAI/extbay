@@ -18,6 +18,6 @@ COPY --from=build /app/packages/runtime/package.json ./packages/runtime/package.
 COPY --from=build /app/packages/cli/dist ./packages/cli/dist
 COPY --from=build /app/packages/cli/package.json ./packages/cli/package.json
 RUN mkdir -p /data && chown 65532:65532 /data
-EXPOSE 9444
+EXPOSE 9444 9445
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD node -e "fetch('http://127.0.0.1:9444/extbay/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
 CMD ["node", "packages/runtime/dist/main.js"]

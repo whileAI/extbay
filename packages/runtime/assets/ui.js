@@ -1,22 +1,25 @@
 (() => {
   'use strict';
-  const main = document.querySelector('main');
-  const notice = document.querySelector('.notice');
+  function mount(root = document, runtimeOverride) {
+  const main = root.querySelector('main');
+  const notice = root.querySelector('.notice');
+  const runtime = runtimeOverride || new URLSearchParams(location.search).get('runtime') || location.origin;
+  const endpoint = (path) => `${runtime}${path}`;
   let state;
   let updates = [];
   let currentTab = new URLSearchParams(location.search).get('tab') || 'installed';
 
-  document.querySelector('.close').onclick = () => parent.postMessage({ type: 'extbay.close' }, location.origin);
-  document.querySelectorAll('[data-tab]').forEach((button) => button.onclick = () => selectTab(button.dataset.tab));
+  root.querySelector('.close').onclick = () => root.dispatchEvent(new CustomEvent('extbay.close'));
+  root.querySelectorAll('[data-tab]').forEach((button) => button.onclick = () => selectTab(button.dataset.tab));
   selectTab(currentTab, false);
   refresh().catch(showError);
 
   async function refresh() {
-    const stateResponse = await fetch('/extbay/api/extensions', { credentials: 'same-origin' });
+    const stateResponse = await fetch(endpoint('/extbay/api/extensions'), { credentials: 'include' });
     if (!stateResponse.ok) throw new Error(`Unable to load extensions (HTTP ${stateResponse.status})`);
     state = await stateResponse.json();
     render(currentTab);
-    const updateResponse = await fetch('/extbay/api/updates', { credentials: 'same-origin' });
+    const updateResponse = await fetch(endpoint('/extbay/api/updates'), { credentials: 'include' });
     updates = updateResponse.ok ? await updateResponse.json() : [];
     render(currentTab);
     renderNotice();
@@ -24,7 +27,7 @@
 
   function selectTab(tab, shouldRender = true) {
     currentTab = tab;
-    document.querySelectorAll('[data-tab]').forEach((button) => button.classList.toggle('active', button.dataset.tab === tab));
+    root.querySelectorAll('[data-tab]').forEach((button) => button.classList.toggle('active', button.dataset.tab === tab));
     if (shouldRender) render(tab);
   }
 
@@ -75,7 +78,7 @@
     if (!confirm(`Install ${update.name} ${update.availableVersion}?${permissions}${restart}`)) return;
     setBusy(true);
     try {
-      const response = await fetch(`/extbay/api/updates/${encodeURIComponent(id)}/install`, { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ approvedPermissions: update.permissions }) });
+      const response = await fetch(endpoint(`/extbay/api/updates/${encodeURIComponent(id)}/install`), { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ approvedPermissions: update.permissions }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
       await refresh();
@@ -85,7 +88,7 @@
   async function deferUpdate(id) {
     setBusy(true);
     try {
-      const response = await fetch(`/extbay/api/updates/${encodeURIComponent(id)}/defer`, { method: 'POST', credentials: 'same-origin' });
+      const response = await fetch(endpoint(`/extbay/api/updates/${encodeURIComponent(id)}/defer`), { method: 'POST', credentials: 'include' });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
       updates = updates.filter((update) => update.id !== id);
@@ -96,27 +99,32 @@
   function openExtension(id) {
     const extension = state.extensions[id]; const version = extension.versions[extension.activeVersion];
     const frame = document.createElement('iframe'); frame.className = 'extension'; frame.title = version.manifest.name;
-    frame.sandbox = 'allow-scripts'; frame.src = `/extbay/extensions/${encodeURIComponent(id)}/${encodeURIComponent(extension.activeVersion)}/${version.manifest.ui.entry}?sha256=${version.sha256}`;
+    const assetPath = runtime === location.origin ? '/extbay/extensions' : '/extbay-extensions';
+    frame.sandbox = 'allow-scripts'; frame.src = `${location.origin}${assetPath}/${encodeURIComponent(id)}/${encodeURIComponent(extension.activeVersion)}/${version.manifest.ui.entry}?sha256=${version.sha256}`;
     const nonce = crypto.randomUUID();
     const listener = async (event) => {
       if (event.source !== frame.contentWindow || event.data?.type !== 'extbay.rpc' || event.data?.nonce !== nonce) return;
       const { requestId, method, params } = event.data;
-      try { const response = await fetch('/extbay/api/rpc', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ extensionId: id, method, params }) }); const body = await response.json(); frame.contentWindow.postMessage({ type: 'extbay.rpc.result', nonce, requestId, ok: response.ok, value: response.ok ? body : undefined, error: response.ok ? undefined : body.error }, '*'); }
+      try { const response = await fetch(endpoint('/extbay/api/rpc'), { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ extensionId: id, method, params }) }); const body = await response.json(); frame.contentWindow.postMessage({ type: 'extbay.rpc.result', nonce, requestId, ok: response.ok, value: response.ok ? body : undefined, error: response.ok ? undefined : body.error }, '*'); }
       catch (error) { frame.contentWindow.postMessage({ type: 'extbay.rpc.result', nonce, requestId, ok: false, error: error.message }, '*'); }
     };
     const back = document.createElement('button'); back.className = 'back'; back.textContent = 'Back to Extensions';
     const close = () => { window.removeEventListener('message', listener); frame.remove(); back.remove(); };
     back.onclick = close;
     window.addEventListener('message', listener); frame.onload = () => frame.contentWindow.postMessage({ type: 'extbay.init', version: 1, nonce }, '*');
-    document.body.append(frame, back);
+    root.append(frame, back);
   }
 
   async function toggleExtension(id, enabled) {
-    const response = await fetch(`/extbay/api/extensions/${encodeURIComponent(id)}/${enabled ? 'enable' : 'disable'}`, { method: 'POST', credentials: 'same-origin' });
+    const response = await fetch(endpoint(`/extbay/api/extensions/${encodeURIComponent(id)}/${enabled ? 'enable' : 'disable'}`), { method: 'POST', credentials: 'include' });
     const body = await response.json(); if (!response.ok) return alert(body.error || `HTTP ${response.status}`);
     state = body; render('installed');
   }
-  function setBusy(value) { document.querySelectorAll('button').forEach((button) => { button.disabled = value; }); }
+  function setBusy(value) { root.querySelectorAll('button').forEach((button) => { button.disabled = value; }); }
   function showError(error) { main.innerHTML = `<p class="empty">${escapeText(error.message)}</p>`; }
   function escapeText(value) { const span = document.createElement('span'); span.textContent = String(value); return span.innerHTML; }
+  return { selectTab, refresh };
+  }
+  window.ExtBayUI = { mount };
+  if (document.querySelector('main') && location.pathname.startsWith('/extbay/')) mount(document);
 })();

@@ -5,12 +5,14 @@ import { addedPermissions, extractPackage, isNewerVersion, StateStore, assertCom
 import { config } from './config.js';
 import { resolveSource } from './sources.js';
 import { BackendManager } from './backend.js';
+import { PanelAssetManager } from './panel-assets.js';
 
 const EXTBAY_VERSION = '0.1.0';
 
 export class ExtensionManager {
   readonly store = new StateStore(config.data);
   readonly backends = new BackendManager();
+  readonly panelAssets = new PanelAssetManager();
 
   async portainerVersion(): Promise<string> {
     const response = await fetch(new URL('/api/status', config.portainerUrl));
@@ -124,6 +126,7 @@ export class ExtensionManager {
     if (existingVersion) await rm(inspected.staged, { recursive: true, force: true });
     else await import('node:fs/promises').then((fs) => fs.rename(inspected.staged, destination));
     try {
+      await this.panelAssets.publish(inspected.manifest, destination);
       await this.backends.start(inspected.manifest);
     } catch (error) {
       await rm(destination, { recursive: true, force: true });

@@ -5,23 +5,26 @@
 ExtBay does not claim or depend on a Portainer plugin API. Portainer CE 2.45.0
 serves a statically built Angular/React application. Its `Extension` model is
 explicitly deprecated and there is no supported API for adding routes or sidebar
-items at runtime. ExtBay therefore integrates at the HTTP boundary.
+items at runtime. ExtBay therefore integrates through a reversible static-asset
+adapter.
 
 ```text
-Browser ──HTTPS── ExtBay Gateway ─────── Portainer CE
-                   │    │                 /api/users/me
-                   │    └── session check ─┘
-                   │
-                   ├── /extbay/ui (trusted host)
-                   ├── /extbay/extensions/* (untrusted static files)
-                   └── Runtime API/RPC ── exact Portainer API allowlist
-                            │
-                            └── Docker API (backend lifecycle only)
+Browser ──normal panel URL── Portainer/DockFrame
+                              ├── injected ExtBay bootstrap
+                              ├── trusted manager (Shadow DOM)
+                              └── sandboxed extension iframe
+                                         │
+                              ExtBay Runtime API/RPC
+                                ├── Portainer authentication/RBAC
+                                └── Docker API (backend lifecycle only)
 ```
 
-The gateway proxies Portainer unchanged, injects one pinned bootstrap script
-into HTML responses, and owns `/extbay/*`. It never injects extension code into
-Portainer's DOM.
+The installer copies the trusted manager assets into `/public` and injects one
+bootstrap script into the panel index. Extension code is never executed in the
+privileged panel DOM: versioned extension assets are copied to a same-origin
+static path solely to satisfy Portainer's CSP, then loaded in an opaque-origin
+sandboxed iframe. The authenticated runtime API listens separately, but is a
+backend daemon rather than a user-facing site.
 
 ## Loading modes
 
@@ -43,13 +46,12 @@ tokens are never included in RPC responses.
 
 ## Installation and rollback
 
-The current installer adds the gateway on a new localhost-only port, which does
-not restart or modify Portainer. It backs up `docker inspect` and never removes
-`portainer_data`; a failed health check removes only the new ExtBay container.
-A future cut-over mode may preserve the existing Portainer URL, but it must
-recreate Portainer to move public bindings and will require a separate explicit
-interactive confirmation plus tested reconstruction/rollback. No such operation
-is present in the current installer.
+The installer backs up `docker inspect` and `/public/index.html`, starts the
+runtime, copies the UI adapter into the running panel, and verifies the marker.
+It does not restart or recreate Portainer and never modifies `portainer_data`.
+On failure it restores the original index and removes the new runtime.
+`uninstall.sh` performs the same restoration. A panel container recreation or
+upgrade replaces its writable layer, so ExtBay must then be installed again.
 
 Extension updates are staged, validated, hashed and health-checked before the
 active-version pointer changes. Rollback only changes that pointer to an already
@@ -58,7 +60,7 @@ healthy.
 
 ## Trust boundary
 
-The gateway/runtime is trusted infrastructure and may access the Docker socket
+The manager/runtime is trusted infrastructure and may access the Docker socket
 only to manage extension backend containers. Extension RPC for Portainer
 resources uses Portainer's API so Portainer RBAC remains authoritative. Backend
 containers run non-root with all capabilities dropped, `no-new-privileges`,

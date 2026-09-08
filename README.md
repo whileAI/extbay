@@ -1,9 +1,10 @@
 # ExtBay
 
-ExtBay is an open-source, security-first extension runtime for Portainer CE. It
-does not rely on a nonexistent Portainer plugin API: a gateway proxies Portainer
-and adds an isolated Extensions surface while the original image and
-`portainer_data` remain untouched.
+ExtBay is an open-source, security-first extension runtime for Portainer CE and
+DockFrame. It does not rely on a nonexistent Portainer plugin API: the installer
+adds versioned frontend assets to the running panel's `/public` directory and
+injects an **Extensions** section into its own sidebar. The runtime remains a
+backend sidecar; users keep opening the normal panel address.
 
 > Status: early security-focused MVP. Do not expose it to the Internet before an
 > independent security review. Stack writes, GPU provider, signature trust CLI,
@@ -37,11 +38,15 @@ curl -fsSL https://raw.githubusercontent.com/whileAI/extbay/main/install.sh | su
 For a reproducible installation, replace `main` in both the raw URL and
 `EXTBAY_SOURCE_REF` with a release tag or commit SHA.
 
-The safe default publishes ExtBay on `127.0.0.1:9444`; open DockFrame/Portainer
-through this address to see the embedded **Extensions** section with **Installed**,
-**Updates**, and **Settings** tabs. The installer discovers the panel container,
-backs up `docker inspect`, and
-does not restart or recreate Portainer. It never deletes `portainer_data`.
+The installer adds **Installed**, **Updates**, and **Settings** directly to the
+normal DockFrame/Portainer UI. After installation, hard-refresh that existing
+page. Ports `9444` (HTTP) and `9445` (HTTPS) are used only by the authenticated
+runtime API; they are not a separate website. The installer reuses the panel's
+TLS certificate when available, backs up `/public/index.html` and `docker
+inspect`, and does not restart or recreate Portainer. It never deletes
+`portainer_data`.
+Because these files live in the container's writable layer, reinstall ExtBay
+after recreating or upgrading the Portainer/DockFrame container.
 
 ExtBay automatically checks supported GitHub Release and HTTPS sources when an
 administrator opens the Extensions section. An available update offers **Install
@@ -76,9 +81,9 @@ New permissions on update require another confirmation.
 curl -fsSL https://raw.githubusercontent.com/whileAI/extbay/main/uninstall.sh | sudo sh
 ```
 
-This removes the ExtBay runtime, CLI, image, and managed backend containers
-without changing or restarting Portainer/DockFrame. Extension data and backups
-are preserved by default. To explicitly delete ExtBay volumes too, use
+This restores the original panel index and removes the ExtBay runtime, CLI,
+image, and managed backend containers without restarting Portainer/DockFrame.
+Extension data and backups are preserved by default. To explicitly delete ExtBay volumes too, use
 `sudo PURGE_DATA=1 sh`; `portainer_data` is never touched.
 
 For signed packages, publish `<package>.extbay.sig` containing

@@ -1,6 +1,7 @@
 import { createReadStream } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createServer as createHttpsServer } from 'node:https';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import httpProxy from 'http-proxy';
@@ -21,16 +22,27 @@ export function startServer() {
   server.on('upgrade', (request, socket, head) => proxy.ws(request, socket, head));
   const [host, portText] = splitListen(config.listen);
   server.listen(Number(portText), host, () => console.log(JSON.stringify({ level: 'info', message: 'ExtBay listening', listen: config.listen })));
+  if (config.tlsListen && config.tlsCert && config.tlsKey) {
+    const [tlsHost, tlsPort] = splitListen(config.tlsListen);
+    Promise.all([readFile(config.tlsCert), readFile(config.tlsKey)]).then(([cert, key]) => {
+      const tlsServer = createHttpsServer({ cert, key }, (request, response) => void route(request, response));
+      tlsServer.on('upgrade', (request, socket, head) => proxy.ws(request, socket, head));
+      tlsServer.listen(Number(tlsPort), tlsHost, () => console.log(JSON.stringify({ level: 'info', message: 'ExtBay TLS listening', listen: config.tlsListen })));
+    }).catch((error) => console.error(JSON.stringify({ level: 'error', message: 'ExtBay TLS disabled', error: error instanceof Error ? error.message : String(error) })));
+  }
   return server;
 }
 
 async function route(request: IncomingMessage, response: ServerResponse) {
   try {
     const url = new URL(request.url ?? '/', `http://${request.headers.host ?? 'localhost'}`);
+    applyCors(request, response);
+    if (request.method === 'OPTIONS' && url.pathname.startsWith('/extbay/')) { response.statusCode = 204; return response.end(); }
     if (request.method && !['GET', 'HEAD', 'OPTIONS'].includes(request.method) && url.pathname.startsWith('/extbay/')) enforceSameOrigin(request);
     if (url.pathname === '/extbay/bootstrap.js') return serveFile(response, path.join(assets, 'bootstrap.js'), 'text/javascript; charset=utf-8', true);
     if (url.pathname === '/extbay/ui') { await authenticate(request); response.setHeader('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; frame-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'"); return serveFile(response, path.join(assets, 'index.html'), 'text/html; charset=utf-8', true); }
     if (url.pathname === '/extbay/ui.js') { await authenticate(request); return serveFile(response, path.join(assets, 'ui.js'), 'text/javascript; charset=utf-8', true); }
+    if (url.pathname === '/extbay-ui.js') { await authenticate(request); return serveFile(response, path.join(assets, 'ui.js'), 'text/javascript; charset=utf-8', true); }
     if (url.pathname === '/extbay/api/health') return json(response, 200, { status: 'ok', portainer: await manager.portainerVersion() });
     if (url.pathname === '/extbay/api/extensions' && request.method === 'GET') { await authenticate(request); return json(response, 200, await manager.store.read()); }
     if (url.pathname === '/extbay/api/updates' && request.method === 'GET') { const user = await authenticate(request, true); return json(response, 200, await manager.checkUpdates(user.Id)); }
@@ -52,6 +64,21 @@ async function route(request: IncomingMessage, response: ServerResponse) {
     const status = Number((error as { statusCode?: number }).statusCode ?? 500);
     json(response, status >= 400 && status < 600 ? status : 500, { error: error instanceof Error ? error.message : 'internal error' });
   }
+}
+
+function applyCors(request: IncomingMessage, response: ServerResponse) {
+  const origin = request.headers.origin;
+  if (typeof origin !== 'string') return;
+  try {
+    const originUrl = new URL(origin);
+    const requestHost = String(request.headers.host ?? '').replace(/^\[/, '').replace(/\](?=:|$)/, '').split(':')[0];
+    if (originUrl.hostname !== requestHost) return;
+    response.setHeader('Access-Control-Allow-Origin', origin);
+    response.setHeader('Access-Control-Allow-Credentials', 'true');
+    response.setHeader('Access-Control-Allow-Headers', 'content-type, authorization, x-csrf-token');
+    response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    response.setHeader('Vary', 'Origin');
+  } catch { /* Invalid origins are not allowed. */ }
 }
 
 async function serveExtension(urlPath: string, response: ServerResponse) {
@@ -108,9 +135,13 @@ function splitListen(value: string) { const index = value.lastIndexOf(':'); if (
 function enforceSameOrigin(request: IncomingMessage) {
   const origin = request.headers.origin;
   const fetchSite = request.headers['sec-fetch-site'];
-  let originHost = '';
-  try { originHost = typeof origin === 'string' ? new URL(origin).host : ''; } catch { originHost = ''; }
-  if (!originHost || originHost !== request.headers.host || (fetchSite && fetchSite !== 'same-origin')) {
+  let originHostname = '';
+  let requestHostname = '';
+  try {
+    originHostname = typeof origin === 'string' ? new URL(origin).hostname : '';
+    requestHostname = new URL(`http://${request.headers.host ?? ''}`).hostname;
+  } catch { originHostname = ''; }
+  if (!originHostname || originHostname !== requestHostname || (fetchSite && !['same-origin', 'same-site'].includes(fetchSite))) {
     throw Object.assign(new Error('cross-origin request rejected'), { statusCode: 403 });
   }
 }
