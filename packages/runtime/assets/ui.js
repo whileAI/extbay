@@ -5,6 +5,8 @@
   const notice = root.querySelector('.notice');
   const runtime = runtimeOverride || new URLSearchParams(location.search).get('runtime') || location.origin;
   const endpoint = (path) => `${runtime}${path}`;
+  let bridgeMode = false;
+  let bridgeContext;
   let state;
   let updates = [];
   let currentTab = new URLSearchParams(location.search).get('tab') || 'installed';
@@ -15,11 +17,11 @@
   refresh().catch(showError);
 
   async function refresh() {
-    const stateResponse = await fetch(endpoint('/extbay/api/extensions'), { credentials: 'include' });
+    const stateResponse = await apiRequest('/extbay/api/extensions');
     if (!stateResponse.ok) throw new Error(`Unable to load extensions (HTTP ${stateResponse.status})`);
     state = await stateResponse.json();
     render(currentTab);
-    const updateResponse = await fetch(endpoint('/extbay/api/updates'), { credentials: 'include' });
+    const updateResponse = await apiRequest('/extbay/api/updates');
     updates = updateResponse.ok ? await updateResponse.json() : [];
     render(currentTab);
     renderNotice();
@@ -79,7 +81,7 @@
     if (!confirm(`Install ${update.name} ${update.availableVersion}?${permissions}${restart}`)) return;
     setBusy(true);
     try {
-      const response = await fetch(endpoint(`/extbay/api/updates/${encodeURIComponent(id)}/install`), { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ approvedPermissions: update.permissions }) });
+      const response = await apiRequest(`/extbay/api/updates/${encodeURIComponent(id)}/install`, { method: 'POST', body: JSON.stringify({ approvedPermissions: update.permissions }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
       await refresh();
@@ -89,7 +91,7 @@
   async function deferUpdate(id) {
     setBusy(true);
     try {
-      const response = await fetch(endpoint(`/extbay/api/updates/${encodeURIComponent(id)}/defer`), { method: 'POST', credentials: 'include' });
+      const response = await apiRequest(`/extbay/api/updates/${encodeURIComponent(id)}/defer`, { method: 'POST' });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
       updates = updates.filter((update) => update.id !== id);
@@ -117,7 +119,7 @@
   }
 
   async function toggleExtension(id, enabled) {
-    const response = await fetch(endpoint(`/extbay/api/extensions/${encodeURIComponent(id)}/${enabled ? 'enable' : 'disable'}`), { method: 'POST', credentials: 'include' });
+    const response = await apiRequest(`/extbay/api/extensions/${encodeURIComponent(id)}/${enabled ? 'enable' : 'disable'}`, { method: 'POST' });
     const body = await response.json(); if (!response.ok) return alert(body.error || `HTTP ${response.status}`);
     state = body; render('installed');
   }
@@ -130,6 +132,68 @@
   function updateIcon() { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5M3 12A9 9 0 0 1 18.5 5.8L21 8"/><path d="M21 3v5h-5"/></svg>'; }
   function settingsIcon() { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21h-4v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1-2.8-2.8.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3v-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1 2.8-2.8.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V3h4v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1 2.8 2.8-.1.1a1.7 1.7 0 0 0-.3 1.8 1.7 1.7 0 0 0 1.5 1h.2v4h-.2a1.7 1.7 0 0 0-1.4 1Z"/></svg>'; }
   function warningIcon() { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10.3 2.9 1.8 17a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 2.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>'; }
+  async function apiRequest(path, options = {}) {
+    if (!bridgeMode) {
+      try {
+        return await fetch(endpoint(path), { ...options, credentials: 'include', headers: { ...(options.headers || {}), ...(options.body ? { 'content-type': 'application/json' } : {}) } });
+      } catch {
+        bridgeMode = true;
+      }
+    }
+    return bridgeRequest(path, options);
+  }
+  async function bridgeRequest(path, options) {
+    const context = await getBridgeContext();
+    const request = { path, method: options.method || 'GET', userId: context.userId, body: options.body ? JSON.parse(options.body) : undefined };
+    const encoded = base64Url(JSON.stringify(request));
+    const create = await fetch(`/api/endpoints/${context.endpointId}/docker/containers/extbay/exec`, {
+      method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ AttachStdout: true, AttachStderr: true, Tty: false, Cmd: ['node', '/app/packages/runtime/dist/bridge.js', encoded] }),
+    });
+    if (!create.ok) throw new Error(`Portainer bridge unavailable (HTTP ${create.status})`);
+    const exec = await create.json();
+    const start = await fetch(`/api/endpoints/${context.endpointId}/docker/exec/${encodeURIComponent(exec.Id)}/start`, {
+      method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ Detach: false, Tty: false }),
+    });
+    if (!start.ok) throw new Error(`Portainer bridge failed (HTTP ${start.status})`);
+    const bytes = new Uint8Array(await start.arrayBuffer());
+    if (bytes.length > 5 * 1024 * 1024) throw new Error('Portainer bridge response is too large');
+    const result = JSON.parse(decodeDockerStream(bytes));
+    return { ok: result.status >= 200 && result.status < 300, status: result.status, json: async () => result.body };
+  }
+  async function getBridgeContext() {
+    if (bridgeContext) return bridgeContext;
+    const [userResponse, endpointsResponse] = await Promise.all([
+      fetch('/api/users/me', { credentials: 'same-origin' }),
+      fetch('/api/endpoints?start=1&limit=100', { credentials: 'same-origin' }),
+    ]);
+    if (!userResponse.ok || !endpointsResponse.ok) throw new Error('Portainer administrator authentication is required');
+    const user = await userResponse.json();
+    if (user.Role !== 1) throw new Error('Portainer administrator is required while the direct runtime connection is unavailable');
+    const payload = await endpointsResponse.json();
+    const endpoints = Array.isArray(payload) ? payload : payload.value || [];
+    const local = endpoints.find((item) => item.Status === 1 && String(item.URL || '').startsWith('unix://')) || endpoints.find((item) => item.Status === 1);
+    if (!local) throw new Error('No active Portainer environment was found for the runtime bridge');
+    bridgeContext = { userId: user.Id, endpointId: local.Id };
+    return bridgeContext;
+  }
+  function decodeDockerStream(bytes) {
+    const decoder = new TextDecoder();
+    let offset = 0; let output = ''; let framed = false;
+    while (offset + 8 <= bytes.length && bytes[offset] <= 2 && bytes[offset + 1] === 0 && bytes[offset + 2] === 0 && bytes[offset + 3] === 0) {
+      framed = true;
+      const size = new DataView(bytes.buffer, bytes.byteOffset + offset + 4, 4).getUint32(0);
+      if (offset + 8 + size > bytes.length) throw new Error('Invalid Docker bridge response');
+      output += decoder.decode(bytes.slice(offset + 8, offset + 8 + size));
+      offset += 8 + size;
+    }
+    return (framed ? output : decoder.decode(bytes)).trim();
+  }
+  function base64Url(value) {
+    const bytes = new TextEncoder().encode(value); let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
   function escapeText(value) { const span = document.createElement('span'); span.textContent = String(value); return span.innerHTML; }
   return { selectTab, refresh };
   }

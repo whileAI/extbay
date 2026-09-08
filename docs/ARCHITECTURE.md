@@ -26,6 +26,13 @@ static path solely to satisfy Portainer's CSP, then loaded in an opaque-origin
 sandboxed iframe. The authenticated runtime API listens separately, but is a
 backend daemon rather than a user-facing site.
 
+When a browser rejects the runtime's secondary TLS origin (for example because
+Portainer generated a self-signed certificate whose exception is port-specific),
+the administrator UI falls back to a fixed-operation bridge executed through
+Portainer's authenticated Docker API. The bridge accepts only ExtBay manager
+operations; it is not a shell or arbitrary command proxy. Portainer endpoint
+access remains the outer authorization boundary.
+
 ## Loading modes
 
 - `hot`: install into a versioned directory and atomically update state. A new
