@@ -11,6 +11,7 @@ else
 fi
 EXTBAY_PORT="${EXTBAY_PORT:-9444}"
 EXTBAY_BIND="${EXTBAY_BIND:-127.0.0.1}"
+PORTAINER_PORT="${PORTAINER_PORT:-9000}"
 EXTBAY_CONTAINER="extbay"
 BACKUP_ROOT="/var/lib/extbay/backups"
 
@@ -60,10 +61,10 @@ if [ -n "${PORTAINER_CONTAINER:-}" ]; then
   [ "$running" = true ] || die "Portainer container is not running: $PORTAINER_CONTAINER"
   portainer_name="$(docker inspect -f '{{.Name}}' "$portainer_id" | sed 's#^/##')"
 else
-  candidates="$(docker ps --format '{{.ID}}|{{.Image}}|{{.Names}}' | awk -F '|' '$2 ~ /(^|\/)portainer\/portainer(-ce)?(:|@|$)/ { print }')"
+  candidates="$(docker ps --format '{{.ID}}|{{.Image}}|{{.Names}}' | awk -F '|' '{ value=tolower($2 "|" $3); if ($2 ~ /(^|\/)portainer\/portainer(-ce)?(:|@|$)/ || value ~ /dockframe/) print }')"
   if [ -z "$candidates" ]; then
     docker ps -a --format '  {{.Names}}  {{.Image}}  {{.Status}}' >&2
-    die "no running Portainer CE container was found; start it or set PORTAINER_CONTAINER=<name>"
+    die "no running Portainer CE/DockFrame container was found; start it or set PORTAINER_CONTAINER=<name>"
   fi
   count="$(printf '%s\n' "$candidates" | wc -l | tr -d ' ')"
   [ "$count" = 1 ] || { printf '%s\n' "$candidates" >&2; die "multiple Portainer containers found; set PORTAINER_CONTAINER=<name>"; }
@@ -114,7 +115,7 @@ if ! docker run -d \
   --restart unless-stopped \
   --network "$network" \
   -p "$EXTBAY_BIND:$EXTBAY_PORT:9444" \
-  -e "EXTBAY_PORTAINER_URL=http://$portainer_ip:9000" \
+  -e "EXTBAY_PORTAINER_URL=http://$portainer_ip:$PORTAINER_PORT" \
   -e "EXTBAY_LISTEN=0.0.0.0:9444" \
   -v extbay_data:/data \
   -v /var/run/docker.sock:/var/run/docker.sock \

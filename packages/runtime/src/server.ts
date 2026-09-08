@@ -8,6 +8,7 @@ import { authenticate } from './auth.js';
 import { config } from './config.js';
 import { ExtensionManager } from './manager.js';
 import { executeRPC } from './rpc.js';
+import type { Permission } from '@extbay/core';
 
 const assets = path.join(path.dirname(fileURLToPath(import.meta.url)), 'assets');
 const manager = new ExtensionManager();
@@ -32,6 +33,16 @@ async function route(request: IncomingMessage, response: ServerResponse) {
     if (url.pathname === '/extbay/ui.js') { await authenticate(request); return serveFile(response, path.join(assets, 'ui.js'), 'text/javascript; charset=utf-8', true); }
     if (url.pathname === '/extbay/api/health') return json(response, 200, { status: 'ok', portainer: await manager.portainerVersion() });
     if (url.pathname === '/extbay/api/extensions' && request.method === 'GET') { await authenticate(request); return json(response, 200, await manager.store.read()); }
+    if (url.pathname === '/extbay/api/updates' && request.method === 'GET') { const user = await authenticate(request, true); return json(response, 200, await manager.checkUpdates(user.Id)); }
+    const updateAction = /^\/extbay\/api\/updates\/([^/]+)\/(install|defer)$/.exec(url.pathname);
+    if (updateAction && request.method === 'POST') {
+      const user = await authenticate(request, true);
+      const id = decodeURIComponent(updateAction[1]!);
+      if (updateAction[2] === 'defer') { await manager.deferUpdate(user.Id, id); return json(response, 200, { deferredHours: 24 }); }
+      const body = await readJson(request) as { approvedPermissions?: Permission[] };
+      if (!Array.isArray(body.approvedPermissions)) throw Object.assign(new Error('approvedPermissions must be an array'), { statusCode: 400 });
+      return json(response, 200, await manager.updateExtension(id, body.approvedPermissions));
+    }
     if (url.pathname === '/extbay/api/rpc' && request.method === 'POST') return json(response, 200, await executeRPC(request, await readJson(request), manager));
     const toggle = /^\/extbay\/api\/extensions\/([^/]+)\/(enable|disable)$/.exec(url.pathname);
     if (toggle && request.method === 'POST') { await authenticate(request, true); return json(response, 200, await manager.setEnabled(decodeURIComponent(toggle[1]!), toggle[2] === 'enable')); }

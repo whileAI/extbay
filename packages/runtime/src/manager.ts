@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { appendFile, mkdir, readFile, rm } from 'node:fs/promises';
 import { verify } from 'node:crypto';
-import { extractPackage, StateStore, assertCompatible, type Manifest, type Permission, type RegistryState } from '@extbay/core';
+import { addedPermissions, extractPackage, isNewerVersion, StateStore, assertCompatible, type ExtensionUpdate, type Manifest, type Permission, type RegistryState } from '@extbay/core';
 import { config } from './config.js';
 import { resolveSource } from './sources.js';
 import { BackendManager } from './backend.js';
@@ -42,6 +42,72 @@ export class ExtensionManager {
 
   async install(source: string, approvedPermissions: Permission[]): Promise<RegistryState> {
     const inspected = await this.inspect(source);
+    return this.activate(inspected, approvedPermissions);
+  }
+
+  async checkUpdates(userId: number): Promise<ExtensionUpdate[]> {
+    const state = await this.store.read();
+    const deferred = state.updateDeferrals?.[String(userId)] ?? {};
+    const updates: ExtensionUpdate[] = [];
+    for (const extension of Object.values(state.extensions)) {
+      const installed = extension.versions[extension.activeVersion];
+      if (!installed || !isUpdateSource(installed.source)) continue;
+      const until = Date.parse(deferred[extension.id] ?? '');
+      if (Number.isFinite(until) && until > Date.now()) continue;
+      let inspected: Awaited<ReturnType<ExtensionManager['inspect']>> | undefined;
+      try {
+        inspected = await this.inspect(installed.source);
+        if (inspected.manifest.id !== extension.id || !isNewerVersion(inspected.manifest.version, extension.activeVersion)) continue;
+        updates.push({
+          id: extension.id,
+          name: inspected.manifest.name,
+          currentVersion: extension.activeVersion,
+          availableVersion: inspected.manifest.version,
+          source: installed.source,
+          permissions: inspected.manifest.permissions,
+          newPermissions: addedPermissions(extension.grantedPermissions, inspected.manifest.permissions),
+          reload: inspected.manifest.runtime.reload,
+          signature: inspected.signature,
+        });
+      } catch (error) {
+        await this.audit('update-check-failed', extension.id, { error: error instanceof Error ? error.message : String(error) });
+      } finally {
+        if (inspected) await rm(inspected.staged, { recursive: true, force: true });
+      }
+    }
+    return updates;
+  }
+
+  async deferUpdate(userId: number, id: string): Promise<void> {
+    await this.store.update((state) => {
+      if (!state.extensions[id]) throw new Error(`extension not found: ${id}`);
+      const key = String(userId);
+      state.updateDeferrals ??= {};
+      state.updateDeferrals[key] ??= {};
+      state.updateDeferrals[key]![id] = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    });
+    await this.audit('update-deferred', id, { userId, hours: 24 });
+  }
+
+  async updateExtension(id: string, approvedPermissions: Permission[]): Promise<RegistryState> {
+    const state = await this.store.read();
+    const extension = state.extensions[id];
+    const active = extension?.versions[extension.activeVersion];
+    if (!extension || !active) throw new Error(`extension not found: ${id}`);
+    if (!isUpdateSource(active.source)) throw new Error('this source does not support automatic updates');
+    const inspected = await this.inspect(active.source);
+    if (inspected.manifest.id !== id) {
+      await rm(inspected.staged, { recursive: true, force: true });
+      throw new Error('update package has a different extension id');
+    }
+    if (!isNewerVersion(inspected.manifest.version, extension.activeVersion)) {
+      await rm(inspected.staged, { recursive: true, force: true });
+      throw new Error('no newer version is available');
+    }
+    return this.activate(inspected, approvedPermissions);
+  }
+
+  private async activate(inspected: Awaited<ReturnType<ExtensionManager['inspect']>>, approvedPermissions: Permission[]): Promise<RegistryState> {
     const requested = new Set(inspected.manifest.permissions);
     if (approvedPermissions.some((p) => !requested.has(p)) || approvedPermissions.length !== requested.size) {
       await rm(inspected.staged, { recursive: true, force: true });
@@ -83,6 +149,7 @@ export class ExtensionManager {
         },
         pendingRestart: inspected.manifest.runtime.reload === 'portainer-restart',
       };
+      for (const deferrals of Object.values(state.updateDeferrals ?? {})) delete deferrals[inspected.manifest.id];
     });
     await this.backends.stopOtherVersions(inspected.manifest.id, inspected.manifest.backend ? inspected.manifest.version : undefined);
     await this.audit('install', inspected.manifest.id, { version: inspected.manifest.version, sha256: inspected.sha256, signature: inspected.signature });
@@ -148,6 +215,11 @@ export class ExtensionManager {
     await mkdir(directory, { recursive: true, mode: 0o700 });
     await Promise.all([appendFile(path.join(directory, 'runtime.log'), line, { mode: 0o600 }), appendFile(path.join(directory, `${id}.log`), line, { mode: 0o600 })]);
   }
+}
+
+function isUpdateSource(source: string): boolean {
+  if (source.startsWith('https://')) return true;
+  return /^github:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(source);
 }
 
 async function verifyChecksum(file: string, actual: string) {

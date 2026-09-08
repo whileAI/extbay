@@ -49,4 +49,17 @@ export interface InstalledExtension {
 export interface RegistryState {
   revision: number;
   extensions: Record<string, InstalledExtension>;
+  updateDeferrals?: Record<string, Record<string, string>>;
+}
+
+export interface ExtensionUpdate {
+  id: string;
+  name: string;
+  currentVersion: string;
+  availableVersion: string;
+  source: string;
+  permissions: Permission[];
+  newPermissions: Permission[];
+  reload: ReloadMode;
+  signature: 'verified' | 'unsigned';
 }
