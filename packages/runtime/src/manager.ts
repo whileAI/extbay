@@ -49,6 +49,7 @@ export class ExtensionManager {
 
   async checkUpdates(userId: number): Promise<ExtensionUpdate[]> {
     const state = await this.store.read();
+    if (state.settings?.automaticUpdateChecks === false) return [];
     const deferred = state.updateDeferrals?.[String(userId)] ?? {};
     const updates: ExtensionUpdate[] = [];
     for (const extension of Object.values(state.extensions)) {
@@ -89,6 +90,14 @@ export class ExtensionManager {
       state.updateDeferrals[key]![id] = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     });
     await this.audit('update-deferred', id, { userId, hours: 24 });
+  }
+
+  async setAutomaticUpdateChecks(enabled: boolean): Promise<RegistryState> {
+    const result = await this.store.update((state) => {
+      state.settings = { automaticUpdateChecks: enabled };
+    });
+    await this.audit('settings-update', 'runtime', { automaticUpdateChecks: enabled });
+    return result;
   }
 
   async updateExtension(id: string, approvedPermissions: Permission[]): Promise<RegistryState> {

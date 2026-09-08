@@ -21,6 +21,11 @@
     if (!stateResponse.ok) throw new Error(`Unable to load extensions (HTTP ${stateResponse.status})`);
     state = await stateResponse.json();
     render(currentTab);
+    if (state.settings?.automaticUpdateChecks === false) {
+      updates = [];
+      renderNotice();
+      return;
+    }
     const updateResponse = await apiRequest('/extbay/api/updates');
     updates = updateResponse.ok ? await updateResponse.json() : [];
     render(currentTab);
@@ -41,7 +46,9 @@
       return;
     }
     if (tab === 'settings') {
-      main.innerHTML = `<h2 class="section-title">${settingsIcon()}ExtBay settings</h2><div class="list"><div class="setting"><div class="setting-title">Automatic update checks</div><div class="muted setting-copy">Enabled. ExtBay checks supported sources when this page opens. Installation always requires confirmation.</div></div><div class="setting"><div class="setting-title">State revision</div><div class="muted setting-copy">${state.revision}</div></div></div>`;
+      const checked = state.settings?.automaticUpdateChecks !== false ? ' checked' : '';
+      main.innerHTML = `<h2 class="section-title">${settingsIcon()}ExtBay settings</h2><div class="list"><div class="setting"><label class="checkbox-row"><input type="checkbox" data-auto-updates${checked}><span class="checkbox-copy"><span class="setting-title">Automatically check for updates</span><span class="muted setting-copy">Check supported sources when Extensions opens. Updates are never installed without confirmation.</span></span></label></div></div>`;
+      main.querySelector('[data-auto-updates]').onchange = (event) => saveAutomaticUpdates(event.target.checked);
       return;
     }
     const items = Object.values(state.extensions);
@@ -123,7 +130,19 @@
     const body = await response.json(); if (!response.ok) return alert(body.error || `HTTP ${response.status}`);
     state = body; render('installed');
   }
-  function setBusy(value) { root.querySelectorAll('button').forEach((button) => { button.disabled = value; }); }
+  async function saveAutomaticUpdates(enabled) {
+    setBusy(true);
+    try {
+      const response = await apiRequest('/extbay/api/settings', { method: 'POST', body: JSON.stringify({ automaticUpdateChecks: enabled }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
+      state = body;
+      if (!enabled) { updates = []; renderNotice(); }
+      render('settings');
+      if (enabled) await refresh();
+    } catch (error) { alert(error.message); render('settings'); } finally { setBusy(false); }
+  }
+  function setBusy(value) { root.querySelectorAll('button,input').forEach((control) => { control.disabled = value; }); }
   function showError(error) {
     main.innerHTML = `<h2 class="section-title">${warningIcon()}Runtime unavailable</h2><div class="list"><div class="setting"><div class="setting-title">ExtBay could not connect to its runtime API</div><div class="muted setting-copy">${escapeText(error.message)} · Expected endpoint: ${escapeText(runtime)}</div><div class="warning">Run <code>extbay doctor</code> on the server, then reinstall ExtBay if the runtime ports or TLS certificate changed.</div></div></div>`;
   }

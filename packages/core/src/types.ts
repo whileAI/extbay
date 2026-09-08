@@ -50,6 +50,9 @@ export interface RegistryState {
   revision: number;
   extensions: Record<string, InstalledExtension>;
   updateDeferrals?: Record<string, Record<string, string>>;
+  settings?: {
+    automaticUpdateChecks: boolean;
+  };
 }
 
 export interface ExtensionUpdate {

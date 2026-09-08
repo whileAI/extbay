@@ -4,7 +4,7 @@ import { ExtensionManager } from './manager.js';
 interface BridgeRequest {
   method?: string;
   path?: string;
-  body?: { approvedPermissions?: Permission[] };
+  body?: { approvedPermissions?: Permission[]; automaticUpdateChecks?: boolean };
   userId?: number;
 }
 
@@ -26,6 +26,11 @@ async function dispatch(request: BridgeRequest): Promise<unknown> {
   const path = request.path ?? '';
   if (method === 'GET' && path === '/extbay/api/extensions') return manager.store.read();
   if (method === 'GET' && path === '/extbay/api/updates') return manager.checkUpdates(validUserId(request.userId));
+  if (method === 'POST' && path === '/extbay/api/settings') {
+    const enabled = request.body?.automaticUpdateChecks;
+    if (typeof enabled !== 'boolean') throw statusError(400, 'automaticUpdateChecks must be a boolean');
+    return manager.setAutomaticUpdateChecks(enabled);
+  }
 
   const toggle = /^\/extbay\/api\/extensions\/([^/]+)\/(enable|disable)$/.exec(path);
   if (method === 'POST' && toggle) return manager.setEnabled(decodeURIComponent(toggle[1]!), toggle[2] === 'enable');
