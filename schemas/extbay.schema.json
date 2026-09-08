@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://extbay.pp.ua/schemas/extbay.schema.json",
+  "$id": "urn:extbay:schema:manifest:v1",
   "title": "ExtBay extension manifest",
   "type": "object",
   "additionalProperties": false,

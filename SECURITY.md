@@ -1,8 +1,9 @@
 # Security policy
 
-Please report vulnerabilities privately to `security@extbay.pp.ua`. Do not open
-a public issue until a fix and disclosure date have been coordinated. Include a
-minimal reproduction, affected version, impact, and suggested mitigation.
+Please use GitHub's private vulnerability reporting for `whileAI/extbay`. Do not
+open a public issue until a fix and disclosure date have been coordinated.
+Include a minimal reproduction, affected version, impact, and suggested
+mitigation.
 
 ExtBay treats the gateway/runtime as trusted infrastructure. Extensions are
 untrusted. Report any way an extension can read Portainer credentials or storage,

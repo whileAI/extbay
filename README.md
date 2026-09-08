@@ -18,13 +18,20 @@ the schema but not exposed as a raw API proxy.
 ## Install
 
 ```sh
-curl -fsSL https://extbay.pp.ua/install.sh -o install.sh
+git clone https://github.com/whileAI/extbay.git
+cd extbay
 sudo sh install.sh
 ```
 
-Production releases should replace the image tag in `install.sh` with a
-published digest. Operators can require one immediately with
-`EXTBAY_IMAGE=ghcr.io/whileai/extbay@sha256:... sudo sh install.sh`.
+The installer builds `extbay:local` directly from the checked-out source. ExtBay
+does not require or operate a website, hosted registry, marketplace, telemetry
+service, or central extension catalog.
+
+If Portainer uses a custom image name, identify its running container explicitly:
+
+```sh
+sudo PORTAINER_CONTAINER=portainer sh install.sh
+```
 
 The safe default publishes ExtBay on `127.0.0.1:9444`; open it locally or through
 an authenticated TLS reverse proxy. The installer discovers Portainer by image, backs up `docker inspect`, and
@@ -43,6 +50,10 @@ extbay rollback whileai.ai-models 1.0.0
 extbay uninstall whileai.ai-models
 extbay doctor
 ```
+
+`github:` resolves a release from the specified extension repository. A direct
+HTTPS URL is fetched exactly as supplied. A local `.extbay` never leaves the
+machine. ExtBay has no default registry and performs no catalog lookup.
 
 Installation is fail-closed in non-interactive mode unless `--yes` is supplied.
 New permissions on update require another confirmation.

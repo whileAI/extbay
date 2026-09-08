@@ -64,3 +64,11 @@ resources uses Portainer's API so Portainer RBAC remains authoritative. Backend
 containers run non-root with all capabilities dropped, `no-new-privileges`,
 read-only root filesystem, limits, a private network by default, and no Docker
 socket. `network.outbound` opts into a separately controlled egress network.
+
+## Distribution model
+
+ExtBay has no central service, website, registry, marketplace, accounts, or
+telemetry. The runtime and CLI operate locally. Extension sources are explicit:
+a local `.extbay`, a caller-supplied HTTPS URL, or a GitHub Release selected by
+`github:owner/repository[@version]`. ExtBay never searches a catalog or silently
+selects a third-party source.
