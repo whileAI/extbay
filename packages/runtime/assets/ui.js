@@ -127,8 +127,22 @@
     const back = document.createElement('button'); back.className = 'back'; back.textContent = 'Back to Extensions';
     const close = () => { window.removeEventListener('message', listener); frame.remove(); back.remove(); };
     back.onclick = close;
-    window.addEventListener('message', listener); frame.onload = () => frame.contentWindow.postMessage({ type: 'extbay.init', version: 1, nonce }, '*');
+    window.addEventListener('message', listener); frame.onload = async () => {
+      const endpointId = await preferredEndpointId();
+      frame.contentWindow.postMessage({ type: 'extbay.init', version: 1, nonce, context: endpointId ? { endpointId } : {} }, '*');
+    };
     root.append(frame, back);
+  }
+
+  async function preferredEndpointId() {
+    try {
+      const response = await fetch('/api/endpoints?start=1&limit=100', { credentials: 'same-origin' });
+      if (!response.ok) return undefined;
+      const payload = await response.json();
+      const endpoints = Array.isArray(payload) ? payload : payload.value || [];
+      const active = endpoints.filter((item) => item.Status === 1 && Number.isSafeInteger(item.Id) && item.Id > 0);
+      return (active.find((item) => String(item.URL || '').startsWith('unix://')) || active[0])?.Id;
+    } catch { return undefined; }
   }
 
   async function toggleExtension(id, enabled) {

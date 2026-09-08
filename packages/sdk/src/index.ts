@@ -1,12 +1,22 @@
 type Params = Record<string, unknown>;
 type Pending = { resolve(value: unknown): void; reject(error: Error): void };
+export interface ExtBayContext { endpointId?: number }
 
 let nonce: string | undefined;
+let context: ExtBayContext = {};
 const pending = new Map<string, Pending>();
+let resolveReady!: (context: ExtBayContext) => void;
+const ready = new Promise<ExtBayContext>((resolve) => { resolveReady = resolve; });
 
 window.addEventListener('message', (event) => {
   if (event.source !== window.parent || typeof event.data !== 'object') return;
-  if (event.data.type === 'extbay.init' && event.data.version === 1 && typeof event.data.nonce === 'string') { nonce = event.data.nonce; return; }
+  if (event.data.type === 'extbay.init' && event.data.version === 1 && typeof event.data.nonce === 'string') {
+    nonce = event.data.nonce;
+    const endpointId = event.data.context?.endpointId;
+    context = Number.isSafeInteger(endpointId) && endpointId > 0 ? { endpointId } : {};
+    resolveReady(context);
+    return;
+  }
   if (event.data.type !== 'extbay.rpc.result' || event.data.nonce !== nonce) return;
   const request = pending.get(event.data.requestId); if (!request) return;
   pending.delete(event.data.requestId);
@@ -24,6 +34,8 @@ function call<T>(method: string, params: Params = {}): Promise<T> {
 }
 
 export const extbay = {
+  ready: () => ready,
+  context: () => context,
   containers: {
     list: (endpointId: number) => call<unknown[]>('containers.list', { endpointId }),
     inspect: (endpointId: number, id: string) => call<unknown>('containers.inspect', { endpointId, id }),

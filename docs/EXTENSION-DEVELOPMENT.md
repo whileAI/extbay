@@ -259,6 +259,11 @@ const endpointInput = document.querySelector<HTMLInputElement>('#endpoint');
 const listButton = document.querySelector<HTMLButtonElement>('#list');
 const output = document.querySelector<HTMLPreElement>('#output');
 
+const context = await extbay.ready();
+if (context.endpointId && endpointInput) {
+  endpointInput.value = String(context.endpointId);
+}
+
 listButton?.addEventListener('click', async () => {
   try {
     const endpointId = Number(endpointInput?.value);
@@ -272,11 +277,10 @@ listButton?.addEventListener('click', async () => {
 });
 ```
 
-The current SDK requires the extension to receive or ask the user for a
-Portainer endpoint ID; endpoint discovery is not yet exposed as an SDK method.
-Call SDK methods after the frame has loaded, normally in response to user input.
-Calling immediately during module evaluation can happen before the ExtBay
-initialization message and will fail with `ExtBay SDK has not been initialized`.
+`extbay.ready()` resolves after the sandbox handshake. Its context contains the
+preferred active Portainer `endpointId` when the current user is allowed to list
+environments. If it is absent, ask the user to select or enter an endpoint ID.
+Do not call resource methods before `ready()` resolves.
 
 ### Container operations
 

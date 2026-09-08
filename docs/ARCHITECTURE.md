@@ -51,6 +51,10 @@ extension id, enabled state, granted permission, method allowlist, argument
 schema, endpoint access, and rate/size limits. Cookies, CSRF values and Portainer
 tokens are never included in RPC responses.
 
+The initialization message may include only a preferred numeric Portainer
+endpoint ID selected by the trusted host from environments visible to the
+current user. It never includes a Portainer token, cookie, or browser storage.
+
 ## Installation and rollback
 
 The installer backs up `docker inspect` and `/public/index.html`, starts the
