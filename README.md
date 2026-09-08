@@ -108,6 +108,7 @@ sudo EXTBAY_IMAGE=extbay:dev sh install.sh
 ```
 
 See [architecture](docs/ARCHITECTURE.md), the
+[extension development guide](docs/EXTENSION-DEVELOPMENT.md), the
 [manifest schema](schemas/extbay.schema.json), and [security policy](SECURITY.md).
 
 ## License
