@@ -2,6 +2,7 @@
 set -eu
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+EXTBAY_SOURCE_REF="${EXTBAY_SOURCE_REF:-main}"
 if [ -n "${EXTBAY_IMAGE:-}" ]; then
   custom_image=true
 else
@@ -16,6 +17,42 @@ BACKUP_ROOT="/var/lib/extbay/backups"
 die() { printf '%s\n' "extbay installer: $*" >&2; exit 1; }
 command -v docker >/dev/null 2>&1 || die "Docker was not found"
 docker info >/dev/null 2>&1 || die "Docker daemon is unavailable or permission was denied"
+
+source_dir="$SCRIPT_DIR"
+source_tmp=""
+cleanup_source() {
+  if [ -n "$source_tmp" ]; then
+    case "$source_tmp" in
+      /tmp/extbay-source.*) rm -rf -- "$source_tmp" ;;
+      *) die "refusing to remove unexpected temporary path: $source_tmp" ;;
+    esac
+    source_tmp=""
+  fi
+}
+trap cleanup_source EXIT
+
+if [ "$custom_image" = false ] && { [ ! -f "$source_dir/Dockerfile" ] || [ ! -f "$source_dir/schemas/extbay.schema.json" ]; }; then
+  command -v curl >/dev/null 2>&1 || die "curl was not found"
+  command -v tar >/dev/null 2>&1 || die "tar was not found"
+  case "$EXTBAY_SOURCE_REF" in
+    *[!A-Za-z0-9._/-]*|'') die "EXTBAY_SOURCE_REF contains unsupported characters" ;;
+  esac
+  source_tmp="$(mktemp -d /tmp/extbay-source.XXXXXX)"
+  source_archive="$source_tmp/source.tar.gz"
+  printf '%s\n' "Downloading ExtBay source from GitHub ($EXTBAY_SOURCE_REF)..."
+  if ! curl -fsSL --proto '=https' --tlsv1.2 \
+    "https://github.com/whileAI/extbay/archive/$EXTBAY_SOURCE_REF.tar.gz" \
+    -o "$source_archive"; then
+    cleanup_source
+    die "failed to download ExtBay source from GitHub"
+  fi
+  mkdir "$source_tmp/source"
+  if ! tar -xzf "$source_archive" --strip-components=1 -C "$source_tmp/source"; then
+    cleanup_source
+    die "failed to unpack ExtBay source"
+  fi
+  source_dir="$source_tmp/source"
+fi
 
 if [ -n "${PORTAINER_CONTAINER:-}" ]; then
   portainer_id="$(docker inspect -f '{{.Id}}' "$PORTAINER_CONTAINER" 2>/dev/null)" || die "Portainer container was not found: $PORTAINER_CONTAINER"
@@ -52,15 +89,23 @@ network="$(docker inspect -f '{{range $name, $_ := .NetworkSettings.Networks}}{{
 portainer_ip="$(docker inspect -f "{{with index .NetworkSettings.Networks \"$network\"}}{{.IPAddress}}{{end}}" "$portainer_id")"
 [ -n "$portainer_ip" ] || die "could not determine Portainer address on network $network"
 
-cleanup() {
+cleanup_container() {
   docker rm -f "$EXTBAY_CONTAINER" >/dev/null 2>&1 || true
 }
-trap cleanup HUP INT TERM
+cleanup_interrupted() {
+  cleanup_container
+  cleanup_source
+}
+trap cleanup_interrupted HUP INT TERM
 
 if [ "$custom_image" = false ]; then
-  [ -f "$SCRIPT_DIR/Dockerfile" ] || die "Dockerfile was not found next to install.sh; clone the ExtBay repository first"
-  printf '%s\n' "Building ExtBay locally from $SCRIPT_DIR..."
-  docker build -t "$EXTBAY_IMAGE" "$SCRIPT_DIR"
+  [ -f "$source_dir/Dockerfile" ] || die "downloaded source does not contain Dockerfile"
+  printf '%s\n' "Building ExtBay locally from source..."
+  if ! docker build -t "$EXTBAY_IMAGE" "$source_dir"; then
+    cleanup_source
+    die "failed to build ExtBay"
+  fi
+  cleanup_source
 elif ! docker image inspect "$EXTBAY_IMAGE" >/dev/null 2>&1; then
   docker pull "$EXTBAY_IMAGE"
 fi
@@ -81,7 +126,7 @@ if ! docker run -d \
   --security-opt no-new-privileges:true \
   --cap-drop ALL \
   "$EXTBAY_IMAGE" >/dev/null; then
-  cleanup
+  cleanup_container
   die "failed to create ExtBay; Portainer was not changed"
 fi
 
@@ -92,7 +137,7 @@ while [ "$i" -lt 30 ]; do
   i=$((i + 1)); sleep 1
 done
 if [ "$healthy" != true ]; then
-  cleanup
+  cleanup_container
   die "ExtBay health check failed; ExtBay container was removed. Portainer was not changed. Backup: $backup_dir"
 fi
 trap - HUP INT TERM

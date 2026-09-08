@@ -18,20 +18,22 @@ the schema but not exposed as a raw API proxy.
 ## Install
 
 ```sh
-git clone https://github.com/whileAI/extbay.git
-cd extbay
-sudo sh install.sh
+curl -fsSL https://raw.githubusercontent.com/whileAI/extbay/main/install.sh | sudo sh
 ```
 
-The installer builds `extbay:local` directly from the checked-out source. ExtBay
-does not require or operate a website, hosted registry, marketplace, telemetry
-service, or central extension catalog.
+The script and source are downloaded directly from GitHub. The installer builds
+`extbay:local` on the machine; no prebuilt ExtBay image or separate download
+server is required. ExtBay does not operate a website, hosted registry,
+marketplace, telemetry service, or central extension catalog.
 
 If Portainer uses a custom image name, identify its running container explicitly:
 
 ```sh
-sudo PORTAINER_CONTAINER=portainer sh install.sh
+curl -fsSL https://raw.githubusercontent.com/whileAI/extbay/main/install.sh | sudo PORTAINER_CONTAINER=portainer sh
 ```
+
+For a reproducible installation, replace `main` in both the raw URL and
+`EXTBAY_SOURCE_REF` with a release tag or commit SHA.
 
 The safe default publishes ExtBay on `127.0.0.1:9444`; open it locally or through
 an authenticated TLS reverse proxy. The installer discovers Portainer by image, backs up `docker inspect`, and
