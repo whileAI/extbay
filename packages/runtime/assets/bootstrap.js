@@ -9,6 +9,7 @@
 
   function mount() {
     const runtimeOrigin = window.__EXTBAY_RUNTIME_ORIGIN__ || location.origin;
+    const assetVersion = window.__EXTBAY_ASSET_VERSION__ || 'dev';
     const uiPath = window.__EXTBAY_RUNTIME_ORIGIN__ ? '/extbay-ui.html' : '/extbay/ui';
     let panel;
     let hiddenView;
@@ -19,7 +20,7 @@
     const loadUI = async (tab) => {
       if (ui) { ui.selectTab(tab); return; }
       if (!loading) loading = (async () => {
-        const response = await fetch(uiPath, { credentials: 'same-origin' });
+        const response = await fetch(`${uiPath}?v=${encodeURIComponent(assetVersion)}`, { credentials: 'same-origin', cache: 'no-store' });
         if (!response.ok) throw new Error(`ExtBay UI failed to load (${response.status})`);
         const parsed = new DOMParser().parseFromString(await response.text(), 'text/html');
         parsed.querySelectorAll('script').forEach((script) => script.remove());
@@ -28,7 +29,7 @@
         await new Promise((resolve, reject) => {
           if (window.ExtBayUI) return resolve();
           const script = document.createElement('script');
-          script.src = window.__EXTBAY_RUNTIME_ORIGIN__ ? '/extbay-ui.js' : '/extbay/ui.js';
+          script.src = `${window.__EXTBAY_RUNTIME_ORIGIN__ ? '/extbay-ui.js' : '/extbay/ui.js'}?v=${encodeURIComponent(assetVersion)}`;
           script.onload = resolve; script.onerror = () => reject(new Error('ExtBay UI script failed to load'));
           document.head.append(script);
         });
@@ -47,7 +48,7 @@
         panel = document.createElement('section');
         panel.id = 'extbay-panel';
         panel.setAttribute('aria-label', 'Extensions');
-        Object.assign(panel.style, { width: '100%', height: '100%', minHeight: 'calc(100vh - 55px)', overflow: 'hidden', background: '#0f172a', color: '#e2e8f0', fontFamily: 'Inter,system-ui,sans-serif' });
+        Object.assign(panel.style, { width: '100%', height: '100%', minHeight: 'calc(100vh - 55px)', overflow: 'hidden', background: 'var(--bg-body-color, #f6f7f8)', color: 'var(--text-main-color, #2e2f33)', fontFamily: 'Inter,system-ui,sans-serif' });
       }
       if (panel.parentElement !== host) host.append(panel);
       void loadUI(tab).catch((error) => { panel.textContent = error.message; });
@@ -82,7 +83,7 @@
       const link = document.createElement('a');
       link.href = '#';
       link.title = 'Extensions';
-      link.className = '!text-inherit no-underline flex h-8 w-full flex-1 items-center space-x-4 rounded-md text-sm transition-colors duration-200 hover:bg-graphite-500 px-3';
+      link.className = '!text-inherit no-underline flex h-8 w-full flex-1 items-center rounded-md text-sm transition-colors duration-200 hover:bg-graphite-500 px-3';
       Object.assign(link.style, { display: 'flex', alignItems: 'center', width: '100%', minHeight: '32px', gap: '16px', borderRadius: '6px', padding: '0 12px', color: 'inherit', textDecoration: 'none', fontSize: '14px' });
       link.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></svg><span>Extensions</span>';
       link.onclick = (event) => { event.preventDefault(); open('installed'); };

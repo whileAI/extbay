@@ -122,11 +122,14 @@
     state = body; render('installed');
   }
   function setBusy(value) { root.querySelectorAll('button').forEach((button) => { button.disabled = value; }); }
-  function showError(error) { main.innerHTML = `<p class="empty">${escapeText(error.message)}</p>`; }
+  function showError(error) {
+    main.innerHTML = `<h2 class="section-title">${warningIcon()}Runtime unavailable</h2><div class="list"><div class="setting"><div class="setting-title">ExtBay could not connect to its runtime API</div><div class="muted setting-copy">${escapeText(error.message)} · Expected endpoint: ${escapeText(runtime)}</div><div class="warning">Run <code>extbay doctor</code> on the server, then reinstall ExtBay if the runtime ports or TLS certificate changed.</div></div></div>`;
+  }
   function emptyState(message) { return `<div class="empty">${boxIcon('empty-icon')}<div>${escapeText(message)}</div></div>`; }
   function boxIcon(className = '') { return `<svg class="${className}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg>`; }
   function updateIcon() { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5M3 12A9 9 0 0 1 18.5 5.8L21 8"/><path d="M21 3v5h-5"/></svg>'; }
   function settingsIcon() { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21h-4v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1-2.8-2.8.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3v-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1 2.8-2.8.1.1a1.7 1.7 0 0 0 1.8.3 1.7 1.7 0 0 0 1-1.5V3h4v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1 2.8 2.8-.1.1a1.7 1.7 0 0 0-.3 1.8 1.7 1.7 0 0 0 1.5 1h.2v4h-.2a1.7 1.7 0 0 0-1.4 1Z"/></svg>'; }
+  function warningIcon() { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10.3 2.9 1.8 17a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 2.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg>'; }
   function escapeText(value) { const span = document.createElement('span'); span.textContent = String(value); return span.innerHTML; }
   return { selectTab, refresh };
   }

@@ -177,9 +177,10 @@ docker cp "$backup_dir/public.index.html" "$portainer_id:/public/.extbay-index.b
 
 panel_tmp="$(mktemp -d /tmp/extbay-panel.XXXXXX)"
 cp "$backup_dir/public.index.html" "$panel_tmp/index.html"
-sed 's#</body>#<script src="/extbay-config.js"></script><script src="/extbay-bootstrap.js" defer></script><!-- extbay:installed --></body>#' "$panel_tmp/index.html" > "$panel_tmp/index.patched.html"
+sed "s#</body>#<script src=\"/extbay-config.js?v=$timestamp\"></script><script src=\"/extbay-bootstrap.js?v=$timestamp\" defer></script><!-- extbay:installed --></body>#" "$panel_tmp/index.html" > "$panel_tmp/index.patched.html"
 cat > "$panel_tmp/extbay-config.js" <<EOF
 (() => { const runtime = new URL(location.origin); runtime.port = location.protocol === 'https:' ? '$EXTBAY_TLS_PORT' : '$EXTBAY_PORT'; window.__EXTBAY_RUNTIME_ORIGIN__ = runtime.origin; })();
+window.__EXTBAY_ASSET_VERSION__ = '$timestamp';
 EOF
 cp "$source_dir/packages/runtime/assets/bootstrap.js" "$panel_tmp/extbay-bootstrap.js"
 cp "$source_dir/packages/runtime/assets/index.html" "$panel_tmp/extbay-ui.html"
