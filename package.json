@@ -1,0 +1,21 @@
+{
+  "name": "extbay",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "build": "npm run build -w @extbay/core && npm run build -w @extbay/runtime && npm run build -w @extbay/cli && npm run build -w @extbay/sdk",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run build -w @extbay/core && npm run build -w @extbay/runtime && npm run typecheck --workspaces --if-present",
+    "dev": "npm run dev -w @extbay/runtime"
+  },
+  "engines": { "node": ">=22" },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

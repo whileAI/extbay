@@ -1,0 +1,7 @@
+.git
+.env
+node_modules
+packages/*/dist
+coverage
+*.extbay
+*.log

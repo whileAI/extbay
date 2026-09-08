@@ -1,0 +1,25 @@
+{
+  "name": "@extbay/runtime",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./dist/main.js",
+    "./manager": "./dist/manager.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && mkdir -p dist/assets && cp -R assets/. dist/assets/",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "dev": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@extbay/core": "0.1.0",
+    "dockerode": "^5.0.1",
+    "http-proxy": "^1.18.1"
+  },
+  "devDependencies": {
+    "@types/dockerode": "^3.3.35",
+    "@types/http-proxy": "^1.17.16"
+  }
+}

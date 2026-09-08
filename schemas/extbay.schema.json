@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://extbay.pp.ua/schemas/extbay.schema.json",
+  "title": "ExtBay extension manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "name", "version", "author", "compatibility", "runtime", "permissions", "ui"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9-]{0,62})(?:\\.[a-z0-9](?:[a-z0-9-]{0,62}))*$",
+      "minLength": 3,
+      "maxLength": 128
+    },
+    "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "version": { "type": "string", "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$" },
+    "author": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "description": { "type": "string", "maxLength": 500 },
+    "homepage": { "type": "string", "format": "uri", "pattern": "^https://" },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["portainer"],
+      "properties": {
+        "portainer": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "extbay": { "type": "string", "minLength": 1, "maxLength": 100 }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reload"],
+      "properties": {
+        "reload": { "enum": ["hot", "ui-reload", "portainer-restart"] }
+      }
+    },
+    "permissions": {
+      "type": "array",
+      "uniqueItems": true,
+      "maxItems": 32,
+      "items": {
+        "enum": [
+          "containers.read", "containers.control", "stacks.read", "stacks.write",
+          "volumes.read", "gpu.metrics", "host.metrics", "network.outbound", "extension.storage"
+        ]
+      }
+    },
+    "ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entry", "sidebar"],
+      "properties": {
+        "entry": { "$ref": "#/$defs/relativePath" },
+        "sidebar": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["title", "icon"],
+          "properties": {
+            "title": { "type": "string", "minLength": 1, "maxLength": 40 },
+            "icon": { "type": "string", "pattern": "^[a-z0-9-]+$", "maxLength": 40 }
+          }
+        }
+      }
+    },
+    "backend": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["image"],
+      "properties": {
+        "image": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._/:~-]*@sha256:[a-f0-9]{64}$", "maxLength": 255 },
+        "command": { "type": "array", "maxItems": 32, "items": { "type": "string", "maxLength": 1024 } },
+        "memory": { "type": "string", "pattern": "^[1-9][0-9]*(?:[KMG]i?B?)$" },
+        "cpus": { "type": "number", "exclusiveMinimum": 0, "maximum": 8 },
+        "healthPath": { "type": "string", "pattern": "^/[A-Za-z0-9._~!$&'()*+,;=:@%/-]*$", "maxLength": 256 }
+      }
+    }
+  },
+  "$defs": {
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)[A-Za-z0-9._/-]+$"
+    }
+  }
+}

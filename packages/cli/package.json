@@ -1,0 +1,15 @@
+{
+  "name": "@extbay/cli",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": { "extbay": "dist/main.js" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && chmod +x dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@extbay/core": "0.1.0",
+    "@extbay/runtime": "0.1.0"
+  }
+}
