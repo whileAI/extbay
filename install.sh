@@ -117,6 +117,11 @@ if [ "$custom_image" = false ]; then
 elif ! docker image inspect "$EXTBAY_IMAGE" >/dev/null 2>&1; then
   docker pull "$EXTBAY_IMAGE"
 fi
+if ! docker run --rm --entrypoint node -v extbay_data:/data "$EXTBAY_IMAGE" -e \
+  "const fs=require('fs'),path=require('path');function fix(p){const s=fs.lstatSync(p);fs.lchownSync(p,0,0);if(s.isDirectory())for(const n of fs.readdirSync(p))fix(path.join(p,n))}fix('/data');fs.chmodSync('/data',0o700)"; then
+  cleanup_source
+  die "failed to prepare permissions on extbay_data"
+fi
 tls_dir="/var/lib/extbay/runtime-tls"
 install -d -m 0700 "$tls_dir"
 tls_available=false

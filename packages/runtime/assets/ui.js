@@ -47,7 +47,12 @@
     }
     if (tab === 'settings') {
       const checked = state.settings?.automaticUpdateChecks !== false ? ' checked' : '';
-      main.innerHTML = `<h2 class="section-title">${settingsIcon()}ExtBay settings</h2><div class="list"><div class="setting"><label class="checkbox-row"><input type="checkbox" data-auto-updates${checked}><span class="checkbox-copy"><span class="setting-title">Automatically check for updates</span><span class="muted setting-copy">Check supported sources when Extensions opens. Updates are never installed without confirmation.</span></span></label></div></div>`;
+      const sourceCount = Object.values(state.extensions).filter((extension) => {
+        const source = extension.versions[extension.activeVersion]?.source || '';
+        return source.startsWith('https://') || /^github:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(source);
+      }).length;
+      const sourceStatus = sourceCount ? `${sourceCount} installed extension${sourceCount === 1 ? '' : 's'} will be checked.` : 'No installed GitHub/HTTPS extensions to check yet.';
+      main.innerHTML = `<h2 class="section-title">${settingsIcon()}ExtBay settings</h2><div class="list"><div class="setting"><label class="checkbox-row"><input type="checkbox" data-auto-updates${checked}><span class="checkbox-copy"><span class="setting-title">Automatically check installed extensions for updates</span><span class="muted setting-copy">${sourceStatus} Updates are never installed without confirmation.</span></span></label></div></div>`;
       main.querySelector('[data-auto-updates]').onchange = (event) => saveAutomaticUpdates(event.target.checked);
       return;
     }
