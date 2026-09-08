@@ -55,14 +55,16 @@
       panel.hidden = false;
       if (!wasOpen) oldTitle = document.title;
       document.title = 'Extensions · ' + oldTitle.replace(/^Extensions · /, '');
-      document.querySelectorAll('#extbay-sidebar button').forEach((button) => button.setAttribute('aria-current', button.dataset.tab === tab ? 'page' : 'false'));
+      const sidebarLink = document.querySelector('#extbay-sidebar a');
+      if (sidebarLink) { sidebarLink.setAttribute('aria-current', 'page'); sidebarLink.style.background = 'rgba(255,255,255,.10)'; }
     };
 
     const close = () => {
       if (panel) panel.hidden = true;
       if (hiddenView) hiddenView.style.display = '';
       document.title = oldTitle.replace(/^Extensions · /, '');
-      document.querySelectorAll('#extbay-sidebar button').forEach((button) => button.setAttribute('aria-current', 'false'));
+      const sidebarLink = document.querySelector('#extbay-sidebar a');
+      if (sidebarLink) { sidebarLink.setAttribute('aria-current', 'false'); sidebarLink.style.background = ''; }
     };
 
     document.addEventListener('click', (event) => {
@@ -75,19 +77,26 @@
       if (!list || document.getElementById('extbay-sidebar')) return;
       const item = document.createElement('li');
       item.id = 'extbay-sidebar';
-      item.style.padding = '10px 12px';
-      const heading = document.createElement('div');
-      heading.textContent = 'Extensions';
-      Object.assign(heading.style, { font: '600 12px system-ui', color: 'inherit', margin: '0 0 6px' });
-      item.append(heading);
-      for (const [label, tab] of [['Installed', 'installed'], ['Updates', 'updates'], ['Settings', 'settings']]) {
-        const link = document.createElement('button');
-        link.type = 'button'; link.textContent = label; link.dataset.tab = tab;
-        Object.assign(link.style, { display: 'block', width: '100%', border: '0', borderRadius: '5px', background: 'transparent', color: 'inherit', textAlign: 'left', padding: '6px 8px', cursor: 'pointer' });
-        link.onclick = () => open(tab);
-        item.append(link);
-      }
+      item.className = 'min-h-8 flex text-gray-3';
+      item.setAttribute('aria-label', 'Extensions');
+      const link = document.createElement('a');
+      link.href = '#';
+      link.title = 'Extensions';
+      link.className = '!text-inherit no-underline flex h-8 w-full flex-1 items-center space-x-4 rounded-md text-sm transition-colors duration-200 hover:bg-graphite-500 px-3';
+      Object.assign(link.style, { display: 'flex', alignItems: 'center', width: '100%', minHeight: '32px', gap: '16px', borderRadius: '6px', padding: '0 12px', color: 'inherit', textDecoration: 'none', fontSize: '14px' });
+      link.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5M2 12l10 5 10-5"/></svg><span>Extensions</span>';
+      link.onclick = (event) => { event.preventDefault(); open('installed'); };
+      item.append(link);
       list.append(item);
+      const label = link.querySelector('span');
+      const syncSidebarWidth = () => {
+        const compact = list.getBoundingClientRect().width < 90;
+        label.hidden = compact;
+        link.style.justifyContent = compact ? 'center' : 'flex-start';
+        link.style.padding = compact ? '0' : '0 12px';
+      };
+      syncSidebarWidth();
+      if ('ResizeObserver' in window) new ResizeObserver(syncSidebarWidth).observe(list);
     };
 
     addSidebar();
